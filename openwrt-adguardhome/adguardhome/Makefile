@@ -52,9 +52,11 @@ endef
 
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
-	$(TAR) -C $(PKG_BUILD_DIR) -xzf $(DL_DIR)/$(PKG_SOURCE)
-	mv $(PKG_BUILD_DIR)/AdGuardHome/* $(PKG_BUILD_DIR)/
-	rm -rf $(PKG_BUILD_DIR)/AdGuardHome
+	mkdir -p $(PKG_BUILD_DIR)/.temp_extract
+	$(TAR) -C $(PKG_BUILD_DIR)/.temp_extract -xzf $(DL_DIR)/$(PKG_SOURCE)
+	find "$(PKG_BUILD_DIR)/.temp_extract" -name "AdGuardHome" -type f -exec cp {} "$(PKG_BUILD_DIR)/" \;
+	chmod +x "$(PKG_BUILD_DIR)/AdGuardHome"
+	rm -rf $(PKG_BUILD_DIR)/.temp_extract
 endef
 
 define Build/Compile
