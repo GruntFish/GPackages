@@ -52,7 +52,9 @@ endef
 
 define Build/Prepare
         mkdir -p $(PKG_BUILD_DIR)
-        $(TAR) -C $(PKG_BUILD_DIR) -xzf $(DL_DIR)/$(PKG_SOURCE) --strip-components=1
+        $(TAR) -C $(PKG_BUILD_DIR) -xzf $(DL_DIR)/$(PKG_SOURCE)
+        mv $(PKG_BUILD_DIR)/AdGuardHome_linux_$(AGH_ARCH)/AdGuardHome/* $(PKG_BUILD_DIR)/
+        rm -rf $(PKG_BUILD_DIR)/AdGuardHome_linux_$(AGH_ARCH)
 endef
 
 define Build/Compile
