@@ -9,44 +9,45 @@ PKG_NAME:=adguardhome
 PKG_VERSION:=0.107.67
 PKG_RELEASE:=1
 
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://codeload.github.com/AdguardTeam/AdGuardHome/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=0d74004fd17c8f185174fa09deb130ad48e2f46e946eb9fa8c66ce186d2af9cf
-PKG_BUILD_DIR:=$(BUILD_DIR)/AdGuardHome-$(PKG_VERSION)
-
-FRONTEND_DEST:=$(PKG_NAME)-frontend-$(PKG_VERSION).tar.gz
-FRONTEND_URL:=https://github.com/AdguardTeam/AdGuardHome/releases/download/v$(PKG_VERSION)/
-FRONTEND_HASH:=8709396e05f812f3e2085a64074384b6363fe1871b9bbb7e8f9886c1aa64b579
-
+PKG_MAINTAINER:=Dobroslaw Kijowski <dobo90@gmail.com>, George Sapkin <george@sapk.in>
 PKG_LICENSE:=GPL-3.0-only
 PKG_LICENSE_FILES:=LICENSE.txt
-PKG_CPE_ID:=cpe:/a:adguard:adguardhome
-PKG_MAINTAINER:=Dobroslaw Kijowski <dobo90@gmail.com>, George Sapkin <george@sapk.in>
 
-PKG_BUILD_DEPENDS:=golang/host
-PKG_BUILD_PARALLEL:=1
-PKG_BUILD_FLAGS:=no-mips16
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_VERSION:=v$(PKG_VERSION)
 
-GO_PKG:=github.com/AdguardTeam/AdGuardHome
-GO_PKG_BUILD_PKG:=github.com/AdguardTeam/AdGuardHome
+# 根据架构设置下载的二进制文件
+ifeq ($(ARCH),aarch64)
+  AGH_ARCH:=arm64
+else ifeq ($(ARCH),arm)
+  AGH_ARCH:=armv7
+else ifeq ($(ARCH),x86_64)
+  AGH_ARCH:=amd64
+else ifeq ($(ARCH),mipsel)
+  AGH_ARCH:=mipsle-softfloat
+else ifeq ($(ARCH),mips)
+  AGH_ARCH:=mips-softfloat
+else
+  AGH_ARCH:=$(ARCH)
+endif
 
-AGH_VERSION_PKG:=github.com/AdguardTeam/AdGuardHome/internal/version
-GO_PKG_LDFLAGS_X:=$(AGH_VERSION_PKG).channel=release \
-	$(AGH_VERSION_PKG).version=$(PKG_VERSION) \
-	$(AGH_VERSION_PKG).committime=$(SOURCE_DATE_EPOCH) \
-	$(AGH_VERSION_PKG).goarm=$(GO_ARM) \
-	$(AGH_VERSION_PKG).gomips=$(GO_MIPS)
+PKG_SOURCE_URL:=https://github.com/AdguardTeam/AdGuardHome/releases/download/v$(PKG_VERSION)/
+PKG_SOURCE:=AdGuardHome_linux_$(AGH_ARCH).tar.gz
+PKG_HASH:=skip
 
 include $(INCLUDE_DIR)/package.mk
-include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
 define Package/adguardhome
-	SECTION:=net
-	CATEGORY:=Network
-	TITLE:=Network-wide ads and trackers blocking DNS server
-	URL:=https://github.com/AdguardTeam/AdGuardHome
-	DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle
-	USERID:=adguardhome=853:adguardhome=853
+  SECTION:=net
+  CATEGORY:=Network
+  TITLE:=Network-wide ads and trackers blocking DNS server
+  URL:=https://github.com/AdguardTeam/AdGuardHome
+  DEPENDS:=+ca-bundle
+  USERID:=adguardhome=853:adguardhome=853
+endef
+
+define Package/adguardhome/description
+Free and open source, powerful network-wide ads and trackers blocking DNS server.
 endef
 
 define Package/adguardhome/conffiles
@@ -54,41 +55,30 @@ define Package/adguardhome/conffiles
 /etc/config/AdGuardHome
 endef
 
-define Package/adguardhome/description
-Free and open source, powerful network-wide ads and trackers blocking DNS server.
-endef
-
-define Download/adguardhome-frontend
-	URL:=$(FRONTEND_URL)
-	URL_FILE:=AdGuardHome_frontend.tar.gz
-	FILE:=$(FRONTEND_DEST)
-	HASH:=$(FRONTEND_HASH)
-endef
-
 define Build/Prepare
-	$(call Build/Prepare/Default)
+        mkdir -p $(PKG_BUILD_DIR)
+        $(TAR) -C $(PKG_BUILD_DIR) -xzf $(DL_DIR)/$(PKG_SOURCE) --strip-components=1
+endef
 
-	gzip -dc $(DL_DIR)/$(FRONTEND_DEST) | $(HOST_TAR) -C $(PKG_BUILD_DIR)/ $(TAR_OPTIONS)
+define Build/Compile
+        # 预编译二进制，无需编译
 endef
 
 define Package/adguardhome/install
-	$(call GoPackage/Package/Install/Bin,$(1))
-	$(INSTALL_DIR) $(1)/etc/capabilities
-	$(INSTALL_CONF) ./files/adguardhome.json $(1)/etc/capabilities/adguardhome.json
+        $(INSTALL_DIR) $(1)/usr/bin
+        $(INSTALL_BIN) $(PKG_BUILD_DIR)/AdGuardHome $(1)/usr/bin/AdGuardHome
 
-	$(INSTALL_DIR) $(1)/etc/config
-	$(INSTALL_CONF) ./files/adguardhome.config $(1)/etc/config/AdGuardHome
+        $(INSTALL_DIR) $(1)/etc/config
+        $(INSTALL_CONF) ./files/adguardhome.config $(1)/etc/config/AdGuardHome
 
-	# $(INSTALL_DIR) $(1)/etc/init.d
-	# $(INSTALL_BIN) ./files/AdGuardHome.init $(1)/etc/init.d/AdGuardHome
+        # $(INSTALL_DIR) $(1)/etc/init.d
+        # $(INSTALL_BIN) ./files/AdGuardHome.init $(1)/etc/init.d/AdGuardHome
 
-	$(INSTALL_DIR) $(1)/etc/sysctl.d
-	$(INSTALL_CONF) ./files/adguardhome.sysctl $(1)/etc/sysctl.d/50-adguardhome.conf
+        $(INSTALL_DIR) $(1)/etc/AdGuardHome
+        $(INSTALL_CONF) $(PKG_BUILD_DIR)/AdGuardHome.yaml $(1)/etc/AdGuardHome/AdGuardHome.yaml
 
-	$(INSTALL_DIR) $(1)/etc/uci-defaults
-	$(INSTALL_BIN) ./files/adguardhome.defaults $(1)/etc/uci-defaults/adguardhome
+        $(INSTALL_DIR) $(1)/etc/capabilities
+        $(INSTALL_CONF) ./files/adguardhome.json $(1)/etc/capabilities/adguardhome.json
 endef
 
-$(eval $(call Download,adguardhome-frontend))
-$(eval $(call GoBinPackage,adguardhome))
 $(eval $(call BuildPackage,adguardhome))
