@@ -1,19 +1,19 @@
 #!/bin/sh
 
-OLD_CONFIG_FILE=$(uci -q get adguardhome.config.config)
-OLD_CONFIG_FILE=${OLD_CONFIG_FILE:-/etc/adguardhome.yaml}
-NEW_CONFIG_DIR=/etc/adguardhome
-NEW_CONFIG_FILE="$NEW_CONFIG_DIR/adguardhome.yaml"
+OLD_CONFIG_FILE=$(uci -q get AdGuardHome.config.config)
+OLD_CONFIG_FILE=${OLD_CONFIG_FILE:-/etc/AdGuardHome.yaml}
+NEW_CONFIG_DIR=/etc/AdGuardHome
+NEW_CONFIG_FILE="$NEW_CONFIG_DIR/AdGuardHome.yaml"
 
 start_service() {
-	if ! /etc/init.d/adguardhome running; then
-		/etc/init.d/adguardhome start
+	if ! /etc/init.d/AdGuardHome running; then
+		/etc/init.d/AdGuardHome start
 	fi
 }
 
 stop_service() {
-	if /etc/init.d/adguardhome running; then
-		/etc/init.d/adguardhome stop
+	if /etc/init.d/AdGuardHome running; then
+		/etc/init.d/AdGuardHome stop
 	fi
 }
 
@@ -21,10 +21,10 @@ if [ -f "$OLD_CONFIG_FILE" ] && [ "$OLD_CONFIG_FILE" != "$NEW_CONFIG_FILE" ]; th
 	echo "Old AdGuard Home config found in '$OLD_CONFIG_FILE'"
 	OLD_CONFIG_DIR=$(dirname "$OLD_CONFIG_FILE")
 
-	USER=$(uci -q get adguardhome.config.user)
-	USER=${USER:-adguardhome}
-	GROUP=$(uci -q get adguardhome.config.group)
-	GROUP=${GROUP:-adguardhome}
+	USER=$(uci -q get AdGuardHome.config.user)
+	USER=${USER:-AdGuardHome}
+	GROUP=$(uci -q get AdGuardHome.config.group)
+	GROUP=${GROUP:-AdGuardHome}
 
 	echo "Using $USER:$GROUP for file ownership."
 
@@ -37,7 +37,7 @@ if [ -f "$OLD_CONFIG_FILE" ] && [ "$OLD_CONFIG_FILE" != "$NEW_CONFIG_FILE" ]; th
 		mv "$OLD_CONFIG_FILE" "$NEW_CONFIG_FILE"
 		chown -R "$USER":"$GROUP" "$NEW_CONFIG_DIR"
 		CUR_CONFIG_FILE="$NEW_CONFIG_FILE"
-		uci set adguardhome.config.config="$NEW_CONFIG_FILE"
+		uci set AdGuardHome.config.config="$NEW_CONFIG_FILE"
 
 		echo "Config migrated to '$NEW_CONFIG_FILE'"
 
@@ -56,8 +56,8 @@ if [ -f "$OLD_CONFIG_FILE" ] && [ "$OLD_CONFIG_FILE" != "$NEW_CONFIG_FILE" ]; th
 
 		stop_service
 
-		if ! uci -q show adguardhome.config.jail_mount | grep -q "$cert_path"; then
-			uci add_list adguardhome.config.jail_mount="$cert_path"
+		if ! uci -q show AdGuardHome.config.jail_mount | grep -q "$cert_path"; then
+			uci add_list AdGuardHome.config.jail_mount="$cert_path"
 		fi
 	fi
 
@@ -69,12 +69,12 @@ if [ -f "$OLD_CONFIG_FILE" ] && [ "$OLD_CONFIG_FILE" != "$NEW_CONFIG_FILE" ]; th
 
 		stop_service
 
-		if ! uci -q show adguardhome.config.jail_mount | grep -q "$private_key_path"; then
-			uci add_list adguardhome.config.jail_mount="$private_key_path"
+		if ! uci -q show AdGuardHome.config.jail_mount | grep -q "$private_key_path"; then
+			uci add_list AdGuardHome.config.jail_mount="$private_key_path"
 		fi
 	fi
 
-	uci commit adguardhome
+	uci commit AdGuardHome
 	start_service
 
 elif [ "$OLD_CONFIG_FILE" != "$NEW_CONFIG_FILE" ]; then
@@ -82,10 +82,10 @@ elif [ "$OLD_CONFIG_FILE" != "$NEW_CONFIG_FILE" ]; then
 	stop_service
 
 	# Service script will create the new config directory
-	uci set adguardhome.config.config="$NEW_CONFIG_FILE"
+	uci set AdGuardHome.config.config="$NEW_CONFIG_FILE"
 	echo "Config path changed to '$NEW_CONFIG_FILE'"
 
-	uci commit adguardhome
+	uci commit AdGuardHome
 	start_service
 
 else
