@@ -51,10 +51,10 @@ Free and open source, powerful network-wide ads and trackers blocking DNS server
 endef
 
 define Build/Prepare
-        mkdir -p $(PKG_BUILD_DIR)
-        $(TAR) -C $(PKG_BUILD_DIR) -xzf $(DL_DIR)/$(PKG_SOURCE)
-        mv $(PKG_BUILD_DIR)/AdGuardHome_linux_$(AGH_ARCH)/AdGuardHome/* $(PKG_BUILD_DIR)/
-        rm -rf $(PKG_BUILD_DIR)/AdGuardHome_linux_$(AGH_ARCH)
+	mkdir -p $(PKG_BUILD_DIR)
+	$(TAR) -C $(PKG_BUILD_DIR) -xzf $(DL_DIR)/$(PKG_SOURCE)
+	mv $(PKG_BUILD_DIR)/AdGuardHome_linux_$(AGH_ARCH)/AdGuardHome/* $(PKG_BUILD_DIR)/
+	rm -rf $(PKG_BUILD_DIR)/AdGuardHome_linux_$(AGH_ARCH)
 endef
 
 define Build/Compile
@@ -62,8 +62,8 @@ define Build/Compile
 endef
 
 define Package/adguardhome/install
-        $(INSTALL_DIR) $(1)/usr/bin
-        $(INSTALL_BIN) $(PKG_BUILD_DIR)/AdGuardHome $(1)/usr/bin/AdGuardHome
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/AdGuardHome $(1)/usr/bin/AdGuardHome
 endef
 
 $(eval $(call BuildPackage,adguardhome))
