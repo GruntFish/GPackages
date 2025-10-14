@@ -38,7 +38,7 @@ GO_PKG_LDFLAGS_X:=$(AGH_VERSION_PKG).channel=release \
 	$(AGH_VERSION_PKG).gomips=$(GO_MIPS)
 
 include $(INCLUDE_DIR)/package.mk
-include ../../lang/golang/golang-package.mk
+include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
 define Package/adguardhome
 	SECTION:=net
@@ -50,8 +50,8 @@ define Package/adguardhome
 endef
 
 define Package/adguardhome/conffiles
-/etc/adguardhome/adguardhome.yaml
-/etc/config/adguardhome
+/etc/AdGuardHome.yaml
+/etc/config/AdGuardHome
 endef
 
 define Package/adguardhome/description
@@ -77,10 +77,10 @@ define Package/adguardhome/install
 	$(INSTALL_CONF) ./files/adguardhome.json $(1)/etc/capabilities/adguardhome.json
 
 	$(INSTALL_DIR) $(1)/etc/config
-	$(INSTALL_CONF) ./files/adguardhome.config $(1)/etc/config/adguardhome
+	$(INSTALL_CONF) ./files/adguardhome.config $(1)/etc/config/AdGuardHome
 
-	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/adguardhome.init $(1)/etc/init.d/adguardhome
+	# $(INSTALL_DIR) $(1)/etc/init.d
+	# $(INSTALL_BIN) ./files/AdGuardHome.init $(1)/etc/init.d/AdGuardHome
 
 	$(INSTALL_DIR) $(1)/etc/sysctl.d
 	$(INSTALL_CONF) ./files/adguardhome.sysctl $(1)/etc/sysctl.d/50-adguardhome.conf
