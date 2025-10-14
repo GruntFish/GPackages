@@ -13,10 +13,7 @@ PKG_MAINTAINER:=Dobroslaw Kijowski <dobo90@gmail.com>, George Sapkin <george@sap
 PKG_LICENSE:=GPL-3.0-only
 PKG_LICENSE_FILES:=LICENSE.txt
 
-PKG_SOURCE_PROTO:=git
-PKG_SOURCE_VERSION:=v$(PKG_VERSION)
-
-# 根据架构设置下载的二进制文件
+# 架构映射
 ifeq ($(ARCH),aarch64)
   AGH_ARCH:=arm64
 else ifeq ($(ARCH),arm)
@@ -43,7 +40,6 @@ define Package/adguardhome
   TITLE:=Network-wide ads and trackers blocking DNS server
   URL:=https://github.com/AdguardTeam/AdGuardHome
   DEPENDS:=+ca-bundle
-  USERID:=adguardhome=853:adguardhome=853
 endef
 
 define Package/adguardhome/description
@@ -51,8 +47,8 @@ Free and open source, powerful network-wide ads and trackers blocking DNS server
 endef
 
 define Package/adguardhome/conffiles
-/etc/AdGuardHome.yaml
 /etc/config/AdGuardHome
+/etc/AdGuardHome.yaml
 endef
 
 define Build/Prepare
@@ -71,14 +67,12 @@ define Package/adguardhome/install
         $(INSTALL_DIR) $(1)/etc/config
         $(INSTALL_CONF) ./files/adguardhome.config $(1)/etc/config/AdGuardHome
 
-        # $(INSTALL_DIR) $(1)/etc/init.d
-        # $(INSTALL_BIN) ./files/AdGuardHome.init $(1)/etc/init.d/AdGuardHome
+        $(INSTALL_DIR) $(1)/etc/init.d
+        $(INSTALL_BIN) ./files/AdGuardHome.init $(1)/etc/init.d/AdGuardHome
 
-        $(INSTALL_DIR) $(1)/etc/AdGuardHome
-        $(INSTALL_CONF) $(PKG_BUILD_DIR)/AdGuardHome.yaml $(1)/etc/AdGuardHome/AdGuardHome.yaml
-
-        $(INSTALL_DIR) $(1)/etc/capabilities
-        $(INSTALL_CONF) ./files/adguardhome.json $(1)/etc/capabilities/adguardhome.json
+        # 安装默认配置文件
+        $(INSTALL_DIR) $(1)/etc
+        $(INSTALL_CONF) $(PKG_BUILD_DIR)/AdGuardHome.yaml $(1)/etc/AdGuardHome.yaml
 endef
 
 $(eval $(call BuildPackage,adguardhome))
