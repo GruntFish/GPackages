@@ -29,8 +29,8 @@ start_service() {
 	local work_dir
 
 	config_load adguardhome
-	config_get config_file config config "/etc/adguardhome/adguardhome.yaml"
-	config_get work_dir config workdir "/var/lib/adguardhome"
+	config_get config_file config config "/etc/AdGuardHome/adguardhome.yaml"
+	config_get work_dir config workdir "/etc/AdGuardHome"
 	config_get pid_file config pidfile "/run/adguardhome.pid"
 	config_get_bool verbose config verbose
 
