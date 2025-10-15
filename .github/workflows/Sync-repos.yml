@@ -27,7 +27,7 @@ on:
         - file
         - directory
       target_branch:
-        description: '保存到当前仓库的目标分支（不可为空）'
+        description: '保存到当前仓库的目标分支（为空默认）'
         required: true
         type: string
         default: 'Packages'
@@ -65,13 +65,9 @@ jobs:
         if [ -z "$TARGET_BRANCH" ]; then
           echo "使用默认分支"
         else
-          if git ls-remote --heads origin "$TARGET_BRANCH" | grep -q "$TARGET_BRANCH"; then
-            echo "远程分支已存在，直接检出"
-            git checkout "$TARGET_BRANCH"
-          else
-            echo "创建新分支"
-            git checkout -b "$TARGET_BRANCH"
-          fi
+          # 强制创建/切换到目标分支
+          git checkout -B "$TARGET_BRANCH"
+          echo "✓ 强制切换到分支: $(git branch --show-current)"
         fi
 
     - name: 设置Git配置
