@@ -27,7 +27,7 @@ on:
         - file
         - directory
       target_branch:
-        description: '保存到当前仓库的目标分支（不可为空）'
+        description: '保存到当前仓库的目标分支（为空主分支）'
         required: true
         type: string
         default: 'Packages'
