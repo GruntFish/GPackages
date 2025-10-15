@@ -253,8 +253,11 @@ jobs:
 
     - name: 提交更改
       run: |
-        # 先配置git使用token
         git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
         git add .
         git commit -m "添加仓库: ${{ github.event.inputs.source_repo }}${{ github.event.inputs.source_path && format(' (路径: {0})', github.event.inputs.source_path) || '' }}"
-        git push
+        
+        for i in {1..3}; do
+          echo "尝试推送 (第 $i 次)..."
+          git push && break || sleep 10
+        done
