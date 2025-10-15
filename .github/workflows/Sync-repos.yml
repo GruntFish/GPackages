@@ -166,39 +166,54 @@ jobs:
           
           if [ -d "$source_item" ]; then
             if command -v rsync >/dev/null; then
-              rsync -av --no-l "$source_item"/ "${final_target_path:-.}"/
+              rsync -av "$source_item"/ "${final_target_path:-.}"/
             else
-              cp -r "$source_item"/* "${final_target_path:-.}"/
+              cp -rp "$source_item"/* "${final_target_path:-.}"/
             fi
           else
-            cp "$source_item" "${final_target_path:-.}"/
+            cp -p "$source_item" "${final_target_path:-.}"/
           fi
         else
           if [ -n "$final_target_path" ]; then
             mkdir -p "$final_target_path"
             if command -v rsync >/dev/null; then
-              rsync -av --no-l "$temp_dir"/ "$final_target_path"/
+              rsync -av "$temp_dir"/ "$final_target_path"/
             else
-              cp -r "$temp_dir"/* "$final_target_path"/
+              cp -rp "$temp_dir"/* "$final_target_path"/
             fi
           else
-
             if command -v rsync >/dev/null; then
-              rsync -av --no-l "$temp_dir"/ ./
+              rsync -av "$temp_dir"/ ./
             else
-              cp -r "$temp_dir"/* ./
+              cp -rp "$temp_dir"/* ./
             fi
           fi
         fi
         
         if [ -d "${final_target_path:-.}" ]; then
-          find "${final_target_path:-.}" -type f \( -name "*.sh" -o -name "*.bash" -o -name "*.py" -o -name "*.pl" -o -name "*.rb" -o -name "*.exe" \) -exec chmod +x {} \; 2>/dev/null || true
-          if [ -d "${final_target_path:-.}/bin" ]; then
-            find "${final_target_path:-.}/bin" -type f ! -name "*.*" -exec chmod +x {} \; 2>/dev/null || true
-          fi
+          echo "修复可执行文件权限..."
+          
+          find "${final_target_path:-.}" -type f \( -name "*.sh" -o -name "*.bash" -o -name "*.py" -o -name "*.pl" -o -name "*.rb" -o -name "*.php" -o -name "*.lua" \) -exec chmod +x {} \; 2>/dev/null || true
+          
+          find "${final_target_path:-.}" -type d -name "bin" | while read bin_dir; do
+            find "$bin_dir" -type f -exec chmod +x {} \; 2>/dev/null || true
+          done
+          
+          find "${final_target_path:-.}" -type d \( -path "*/usr/bin" -o -path "*/usr/local/bin" -o -path "*/usr/sbin" -o -path "*/sbin" -o -path "*/opt/bin" \) | while read bin_dir; do
+            find "$bin_dir" -type f -exec chmod +x {} \; 2>/dev/null || true
+          done
+          
+          find "${final_target_path:-.}" -type f ! -name "*.*" -exec sh -c '
+            file="$1"
+            if [ -s "$file" ] && head -n 1 "$file" | grep -q "^#!"; then
+              echo "修复脚本权限: $file"
+              chmod +x "$file"
+            fi
+          ' _ {} \; 2>/dev/null || true
+          
 
           if [ -n "$final_target_path" ]; then
-            rm -rf "$final_target_path/.git"
+            rm -rf "$final_target_path/.git" 2>/dev/null || true
           fi
         fi
         
