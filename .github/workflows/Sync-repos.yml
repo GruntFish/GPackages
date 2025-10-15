@@ -27,7 +27,7 @@ on:
         - file
         - directory
       target_branch:
-        description: '保存到当前仓库的目标分支（为空默认）'
+        description: '保存到当前仓库的目标分支（不可为空）'
         required: true
         type: string
         default: 'Packages'
@@ -52,24 +52,12 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: 检出分支
+    - name: 检出默认分支
       uses: actions/checkout@v4
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 0
         
-    - name: 切换分支  
-      run: |
-        TARGET_BRANCH="${{ github.event.inputs.target_branch }}"
-        
-        if [ -z "$TARGET_BRANCH" ]; then
-          echo "使用默认分支"
-        else
-          # 强制创建/切换到目标分支
-          git checkout -B "$TARGET_BRANCH"
-          echo "✓ 强制切换到分支: $(git branch --show-current)"
-        fi
-
     - name: 设置Git配置
       run: |
         git config --global user.name "github-actions[bot]"
@@ -207,7 +195,6 @@ jobs:
             fi
           ' _ {} \; 2>/dev/null || true
           
-
           if [ -n "$final_target_path" ]; then
             rm -rf "$final_target_path/.git" 2>/dev/null || true
           fi
@@ -220,7 +207,6 @@ jobs:
     - name: 清理默认文件
       if: ${{ github.event.inputs.clean_default_files == 'true' }}
       run: |
-
         CURRENT_BRANCH="${{ github.event.inputs.target_branch }}"
         DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
         
@@ -247,22 +233,33 @@ jobs:
         
         echo "清理完成！注意：此操作会删除工作流，下次需要重新上传工作流文件才能使用"
 
-    - name: 验证Git状态
+    - name: 创建并切换到目标分支
       run: |
-        echo "=== Git状态检查 ==="
-        echo "当前分支: $(git branch --show-current)"
-        echo "Git状态:"
-        git status --short
-        echo "远程分支:"
-        git ls-remote --heads origin
+        TARGET_BRANCH="${{ github.event.inputs.target_branch }}"
+        echo "目标分支: $TARGET_BRANCH"
+        
+        # 检查分支是否存在
+        if git ls-remote --heads origin "$TARGET_BRANCH" | grep -q "$TARGET_BRANCH"; then
+          echo "分支已存在，切换到: $TARGET_BRANCH"
+          git checkout "$TARGET_BRANCH"
+        else
+          echo "创建新分支: $TARGET_BRANCH"
+          git checkout -b "$TARGET_BRANCH"
+        fi
+        
+        # 验证分支切换
+        CURRENT_BRANCH=$(git branch --show-current)
+        echo "当前分支: $CURRENT_BRANCH"
+        
+        if [ "$CURRENT_BRANCH" != "$TARGET_BRANCH" ]; then
+          echo "❌ 分支切换失败！强制修复..."
+          git checkout -B "$TARGET_BRANCH"
+          echo "修复后分支: $(git branch --show-current)"
+        fi
 
     - name: 提交更改
       run: |
         git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
         git add .
         git commit -m "添加仓库: ${{ github.event.inputs.source_repo }}${{ github.event.inputs.source_path && format(' (路径: {0})', github.event.inputs.source_path) || '' }}"
-        
-        for i in {1..3}; do
-          echo "尝试推送 (第 $i 次)..."
-          git push && break || sleep 10
-        done
+        git push
