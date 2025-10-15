@@ -1,5 +1,7 @@
 # adguardhome makefile by GruntFish & DS.
 
+v0.107.67
+
 # luci-app-adguardhome by sirpdboy
 
-luci-app-adguardhome for openwrt 24.10 lua
+24.10 lua
