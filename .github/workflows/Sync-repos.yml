@@ -251,6 +251,15 @@ jobs:
         
         echo "清理完成！注意：此操作会删除工作流，下次需要重新上传工作流文件才能使用"
 
+    - name: 验证Git状态
+      run: |
+        echo "=== Git状态检查 ==="
+        echo "当前分支: $(git branch --show-current)"
+        echo "Git状态:"
+        git status --short
+        echo "远程分支:"
+        git ls-remote --heads origin
+
     - name: 提交更改
       run: |
         git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
