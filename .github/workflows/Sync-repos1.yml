@@ -1,6 +1,6 @@
 # The Workflow By GruntFish & DS.
 
-name: Sync-repos
+name: Sync-repos1
 
 on:
   workflow_dispatch:
