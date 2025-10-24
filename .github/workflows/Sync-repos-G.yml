@@ -21,6 +21,10 @@ on:
           - git
           - subdir
           - tarball
+      target_branch:
+        description: '目标分支'
+        required: true
+        default: 'Packages'
       target_folder:
         description: '目标文件夹 (留空则放在根目录)'
         required: false
@@ -34,10 +38,6 @@ on:
         required: false
         default: 'false'
         type: boolean
-      target_branch:
-        description: '目标分支'
-        required: true
-        default: 'Packages'
 
 jobs:
   sync-to-current-repo:
