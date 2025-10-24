@@ -279,7 +279,7 @@ jobs:
           echo "远程分支:"
           git branch -r
 
-      - name: 提交更改（修复版）
+      - name: 提交更改（简单修复）
         run: |
           echo "=== 提交更改前分支状态 ==="
           echo "当前分支: $(git branch --show-current)"
@@ -289,22 +289,10 @@ jobs:
           # 设置远程URL
           git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           
-          # 获取最新远程状态
-          git fetch origin
-          
-          # 如果目标分支已存在，重置到远程分支
-          if git ls-remote --heads origin "$TARGET_BRANCH" | grep -q "$TARGET_BRANCH"; then
-            echo "重置到远程分支: $TARGET_BRANCH"
-            git reset --hard origin/"$TARGET_BRANCH"
-          fi
-          
-          # 添加和提交更改
+          # 直接添加和提交
           git add .
-          if ! git diff --staged --quiet; then
-            git commit -m "添加仓库: ${{ github.event.inputs.source_repo }}${{ github.event.inputs.source_path && format(' (路径: {0})', github.event.inputs.source_path) || '' }}"
-            # 使用强制推送（因为可能有冲突）
-            git push --force-with-lease origin HEAD:"$TARGET_BRANCH"
-            echo "更改已提交并推送到分支: $TARGET_BRANCH"
-          else
-            echo "没有更改需要提交"
-          fi
+          git commit -m "添加仓库: ${{ github.event.inputs.source_repo }}${{ github.event.inputs.source_path && format(' (路径: {0})', github.event.inputs.source_path) || '' }}" || echo "没有新更改或提交失败"
+          
+          # 强制推送（因为分支切换可能导致历史不一致）
+          git push --force origin HEAD:"$TARGET_BRANCH"
+          echo "更改已推送到分支: $TARGET_BRANCH"
