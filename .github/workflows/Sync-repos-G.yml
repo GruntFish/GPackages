@@ -137,7 +137,7 @@ jobs:
         
         echo "✅ 仓库同步完成"
 
-    - name: [DEBUG] 同步后分支状态（切换前）
+    - name: 同步后分支状态（切换前）
       run: |
         echo "=== 同步仓库后，切换分支前 ==="
         echo "当前分支: $(git branch --show-current 2>/dev/null || echo 'detached HEAD')"
@@ -162,7 +162,7 @@ jobs:
         rm -f .gitignore
         echo "✅ 默认文件已清理"
 
-    - name: [DEBUG] 清理后分支状态
+    - name: 清理后分支状态
       run: |
         echo "=== 清理默认文件后 ==="
         echo "当前分支: $(git branch --show-current 2>/dev/null || echo 'detached HEAD')"
@@ -184,7 +184,7 @@ jobs:
           git checkout -b "$TARGET_BRANCH"
         fi
 
-    - name: [DEBUG] 切换分支后状态
+    - name: 切换分支后状态
       run: |
         echo "=== 切换到目标分支后 ==="
         echo "当前分支: $(git branch --show-current 2>/dev/null || echo 'detached HEAD')"
