@@ -1,0 +1,209 @@
+name: Sync-repos-G
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: '源仓库 (格式: owner/repo)'
+        required: true
+      source_branch:
+        description: '源分支 (留空则使用默认分支)'
+        required: false
+      source_path:
+        description: '源路径 (可选，如 packages/your-package)'
+        required: false
+      source_type:
+        description: '源类型 (git/subdir/tarball)'
+        required: false
+        default: 'git'
+        type: choice
+        options:
+          - git
+          - subdir
+          - tarball
+      target_folder:
+        description: '目标文件夹 (留空则放在根目录)'
+        required: false
+      confirm_replace:
+        description: '确认覆盖同名文件夹 (true/false)'
+        required: false
+        default: 'false'
+        type: boolean
+      clean_default_files:
+        description: '是否清理默认文件 (README.md, .gitignore 等)'
+        required: false
+        default: 'false'
+        type: boolean
+      target_branch:
+        description: '目标分支'
+        required: true
+        default: 'Packages'
+
+jobs:
+  sync-to-current-repo:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: 检出默认分支
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: [DEBUG] 检出后分支状态
+      run: |
+        echo "=== 检出默认分支后 ==="
+        echo "当前分支: $(git branch --show-current 2>/dev/null || echo 'detached HEAD')"
+        echo "本地分支:"
+        git branch
+        echo "远程分支:"
+        git branch -r
+
+    - name: 设置Git配置
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: 同步并保存仓库
+      env:
+        SOURCE_REPO: ${{ github.event.inputs.source_repo }}
+        SOURCE_BRANCH: ${{ github.event.inputs.source_branch }}
+        SOURCE_PATH: ${{ github.event.inputs.source_path }}
+        SOURCE_TYPE: ${{ github.event.inputs.source_type }}
+        TARGET_FOLDER: ${{ github.event.inputs.target_folder }}
+        CONFIRM_REPLACE: ${{ github.event.inputs.confirm_replace }}
+      run: |
+        repo_name=$(basename "$SOURCE_REPO")
+        
+        if [ -n "$TARGET_FOLDER" ]; then
+          base_target_path="$TARGET_FOLDER"
+        else
+          base_target_path=""
+        fi
+        
+        if [ -n "$SOURCE_PATH" ]; then
+          folder_name=$(basename "$SOURCE_PATH")
+          if [ -n "$base_target_path" ]; then
+            final_target_path="$base_target_path/$folder_name"
+          else
+            final_target_path="$folder_name"
+          fi
+        else
+          if [ -n "$base_target_path" ]; then
+            final_target_path="$base_target_path/$repo_name"
+          else
+            final_target_path="$repo_name"
+          fi
+        fi
+        
+        echo "目标路径: $final_target_path"
+        
+        if [ "$CONFIRM_REPLACE" != "true" ] && [ -d "$final_target_path" ]; then
+          echo "错误: 目标路径 $final_target_path 已存在，且未确认覆盖！"
+          exit 1
+        fi
+        
+        case "$SOURCE_TYPE" in
+          git)
+            git clone --depth=1 ${SOURCE_BRANCH:+-b "$SOURCE_BRANCH"} "https://github.com/$SOURCE_REPO.git" temp_repo
+            if [ -n "$SOURCE_PATH" ]; then
+              if [ ! -d "temp_repo/$SOURCE_PATH" ]; then
+                echo "错误: 源路径 temp_repo/$SOURCE_PATH 不存在！"
+                exit 1
+              fi
+              mkdir -p "$(dirname "$final_target_path")"
+              cp -r "temp_repo/$SOURCE_PATH" "$final_target_path"
+            else
+              mkdir -p "$(dirname "$final_target_path")"
+              cp -r temp_repo "$final_target_path"
+            fi
+            rm -rf temp_repo
+            ;;
+          subdir)
+            mkdir -p "$final_target_path"
+            wget -qO- "https://github.com/$SOURCE_REPO/archive/${SOURCE_BRANCH:-main}.tar.gz" | tar xz --strip=1 -C "$final_target_path"
+            ;;
+          tarball)
+            mkdir -p "$final_target_path"
+            wget -qO- "https://github.com/$SOURCE_REPO/tarball/${SOURCE_BRANCH:-main}" | tar xz --strip=1 -C "$final_target_path"
+            ;;
+          *)
+            echo "错误: 不支持的源类型 $SOURCE_TYPE"
+            exit 1
+            ;;
+        esac
+        
+        echo "✅ 仓库同步完成"
+
+    - name: [DEBUG] 同步后分支状态（切换前）
+      run: |
+        echo "=== 同步仓库后，切换分支前 ==="
+        echo "当前分支: $(git branch --show-current 2>/dev/null || echo 'detached HEAD')"
+        echo "本地分支:"
+        git branch
+        echo "远程分支:"
+        git branch -r
+
+    - name: 清理默认文件
+      if: ${{ github.event.inputs.clean_default_files == 'true' }}
+      run: |
+        CURRENT_BRANCH="${{ github.event.inputs.target_branch }}"
+        DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+        
+        if [ "$CURRENT_BRANCH" = "$DEFAULT_BRANCH" ]; then
+          echo "警告：当前在默认分支 $DEFAULT_BRANCH，跳过清理以避免误删工作流文件！"
+          exit 0
+        fi
+        
+        echo "清理默认文件..."
+        rm -f README.md
+        rm -f .gitignore
+        echo "✅ 默认文件已清理"
+
+    - name: [DEBUG] 清理后分支状态
+      run: |
+        echo "=== 清理默认文件后 ==="
+        echo "当前分支: $(git branch --show-current 2>/dev/null || echo 'detached HEAD')"
+        echo "本地分支:"
+        git branch
+        echo "远程分支:"
+        git branch -r
+
+    - name: 创建并切换到目标分支
+      run: |
+        TARGET_BRANCH="${{ github.event.inputs.target_branch }}"
+        echo "目标分支: $TARGET_BRANCH"
+        
+        if git ls-remote --heads origin "$TARGET_BRANCH" | grep -q "$TARGET_BRANCH"; then
+          echo "分支已存在，切换到: $TARGET_BRANCH"
+          git checkout "$TARGET_BRANCH"
+        else
+          echo "创建新分支: $TARGET_BRANCH"
+          git checkout -b "$TARGET_BRANCH"
+        fi
+
+    - name: [DEBUG] 切换分支后状态
+      run: |
+        echo "=== 切换到目标分支后 ==="
+        echo "当前分支: $(git branch --show-current 2>/dev/null || echo 'detached HEAD')"
+        echo "本地分支:"
+        git branch
+        echo "远程分支:"
+        git branch -r
+
+    - name: 提交更改
+      run: |
+        echo "=== 提交更改前分支状态 ==="
+        echo "当前分支: $(git branch --show-current 2>/dev/null || echo 'detached HEAD')"
+        echo "本地分支:"
+        git branch
+        echo "远程分支:"
+        git branch -r
+        
+        git remote set-url origin https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+        git fetch origin
+        git add .
+        git commit -m "添加仓库: ${{ github.event.inputs.source_repo }}${{ github.event.inputs.source_path && format(' (路径: {0})', github.event.inputs.source_path) || '' }}"
+        git push --force-with-lease origin HEAD
