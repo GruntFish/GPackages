@@ -52,7 +52,7 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 0
 
-    - name: [DEBUG] 检出后分支状态
+    - name: 检出后分支状态
       run: |
         echo "=== 检出默认分支后 ==="
         echo "当前分支: $(git branch --show-current 2>/dev/null || echo 'detached HEAD')"
