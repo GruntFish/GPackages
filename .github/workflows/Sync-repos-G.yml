@@ -115,9 +115,11 @@ jobs:
               fi
               mkdir -p "$(dirname "$final_target_path")"
               cp -r "temp_repo/$SOURCE_PATH" "$final_target_path"
+              rm -rf "$final_target_path/.git"
             else
               mkdir -p "$(dirname "$final_target_path")"
               cp -r temp_repo "$final_target_path"
+              rm -rf "$final_target_path/.git"
             fi
             rm -rf temp_repo
             ;;
