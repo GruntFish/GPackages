@@ -1,0 +1,382 @@
+# The Workflow By GruntFish & DS.
+name: Fetch-repos
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: '源仓库地址（格式:所有者/仓库名）'
+        required: true
+        type: string
+      source_branch:
+        description: '源仓库分支（留空使用其默认分支）'
+        required: false
+        type: string
+      source_path:
+        description: '源指定路径（目录或文件，可为空）'
+        required: false
+        type: string
+      source_type:
+        description: '同步类型'
+        required: true
+        type: choice
+        default: 'auto'
+        options:
+        - auto
+        - file
+        - directory
+      target_branch:
+        description: '保存到的目标分支（不可为空）'
+        required: true
+        type: string
+        default: 'Packages'
+      target_folder:
+        description: '保存到目标文件夹（可以为空）'
+        required: false
+        type: string
+      save_to_root:
+        description: '保存到目标分支根目录（优先级最高）'
+        required: true
+        type: boolean
+        default: false
+      confirm_replace:
+        description: '确认替换目标分支存在的文件或目录！'
+        required: true
+        type: boolean
+        default: false
+      clean_default_files:
+        description: '清理源仓库的工作流以及默认文件等！'
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  sync-to-current-repo:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 设置Git配置
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+    - name: 检出并准备目标分支
+      run: |
+        TARGET_BRANCH="${{ github.event.inputs.target_branch }}"
+        if [ -z "$TARGET_BRANCH" ]; then
+          echo "错误：目标分支不能为空"
+          exit 1
+        fi
+        echo "目标分支: $TARGET_BRANCH"
+        echo "正在尝试检出分支 '$TARGET_BRANCH'..."
+        if git clone --depth 1 --branch "$TARGET_BRANCH" "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ./workspace 2>/dev/null; then
+          echo "分支 '$TARGET_BRANCH' 已存在，已检出"
+          cd workspace
+        else
+          echo "分支 '$TARGET_BRANCH' 不存在，创建新工作区"
+          git clone --depth 1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ./workspace
+          cd workspace
+          git checkout --orphan "$TARGET_BRANCH"
+          git rm -rf . --quiet 2>/dev/null || true
+          git commit --allow-empty -m "初始化孤儿分支 $TARGET_BRANCH"
+          echo "孤儿分支 '$TARGET_BRANCH' 在本地创建完成"
+        fi
+    - name: 验证输入参数
+      run: |
+        SOURCE_REPO="${{ github.event.inputs.source_repo }}"
+        if [ -z "$SOURCE_REPO" ]; then
+          echo "错误：源仓库地址不能为空"
+          exit 1
+        fi
+        if ! echo "$SOURCE_REPO" | grep -q "/"; then
+          echo "错误：源仓库格式应为 '所有者/仓库名'"
+          exit 1
+        fi
+        echo "输入参数验证通过"
+
+    - name: 拉取并处理源仓库
+      env:
+        SOURCE_REPO: ${{ github.event.inputs.source_repo }}
+        SOURCE_BRANCH: ${{ github.event.inputs.source_branch }}
+        SOURCE_PATH: ${{ github.event.inputs.source_path }}
+        SOURCE_TYPE: ${{ github.event.inputs.source_type }}
+        TARGET_FOLDER: ${{ github.event.inputs.target_folder }}
+        SAVE_TO_ROOT: ${{ github.event.inputs.save_to_root }}
+        CONFIRM_REPLACE: ${{ github.event.inputs.confirm_replace }}
+      working-directory: ./workspace
+      run: |
+        set -e
+        echo "=== 信息简要 ==="
+        echo "源仓库: $SOURCE_REPO"
+        echo "源分支: ${SOURCE_BRANCH:-未指定，使用默认分支}"
+        echo "源路径: ${SOURCE_PATH:-整个仓库}"
+        if [ "$SAVE_TO_ROOT" = "true" ]; then
+          final_target_path=""
+          echo "保存到: 目标分支根目录 (忽略目标文件夹设置)"
+        else
+          repo_name=$(basename "$SOURCE_REPO")
+          if [ -n "$TARGET_FOLDER" ]; then
+            base_target_path="$TARGET_FOLDER"
+            echo "目标文件夹: $TARGET_FOLDER (用户指定)"
+          elif [ -n "$SOURCE_PATH" ]; then
+            base_target_path=$(basename "$SOURCE_PATH")
+            echo "目标文件夹: $base_target_path (来自源路径)"
+          else
+            base_target_path="$repo_name"
+            echo "目标文件夹: $repo_name (自动使用仓库名)"
+          fi
+          final_target_path="$base_target_path"
+          echo "保存到: $final_target_path"
+        fi
+        temp_dir=$(mktemp -d)
+        echo "临时目录: $temp_dir"
+        echo "开始拉取源仓库..."
+        if [ -n "$SOURCE_BRANCH" ]; then
+          git clone --depth 1 --branch "$SOURCE_BRANCH" "https://github.com/$SOURCE_REPO.git" "$temp_dir"
+        else
+          git clone --depth 1 "https://github.com/$SOURCE_REPO.git" "$temp_dir"
+        fi
+        if [ -n "$SOURCE_PATH" ]; then
+          source_item="$temp_dir/$SOURCE_PATH"
+          if [ ! -e "$source_item" ]; then
+            echo "错误: 路径 '$SOURCE_PATH' 在源仓库中不存在"
+            exit 1
+          fi
+        fi
+        if [ -n "$final_target_path" ] && [ -e "$final_target_path" ]; then
+          if [ "$CONFIRM_REPLACE" = "true" ]; then
+            echo "确认替换已存在的路径: $final_target_path"
+            rm -rf "$final_target_path"
+          else
+            echo "错误: 路径 '$final_target_path' 已存在，但未确认替换"
+            exit 1
+          fi
+        fi
+        echo "开始处理文件..."
+        if [ -n "$SOURCE_PATH" ]; then
+          source_item="$temp_dir/$SOURCE_PATH"
+          if [ -n "$final_target_path" ]; then
+            mkdir -p "$(dirname "$final_target_path")"
+          fi
+          
+          if [ -d "$source_item" ]; then
+            cp -r "$source_item" "$final_target_path"/
+          else
+            if [ -n "$final_target_path" ]; then
+              mkdir -p "$(dirname "$final_target_path")"
+            fi
+            cp "$source_item" "$final_target_path"/
+          fi
+        else
+          if [ -n "$final_target_path" ]; then
+            mkdir -p "$final_target_path"
+            if command -v rsync >/dev/null; then
+              echo "使用 rsync 复制文件（包含隐藏文件）"
+              rsync -av "$temp_dir/" "$final_target_path"/
+            else
+              echo "使用 find + cp 复制文件（包含隐藏文件）"
+              find "$temp_dir" -mindepth 1 -maxdepth 1 -exec cp -r {} "$final_target_path" \;
+            fi
+            if [ -d "$final_target_path/.git" ]; then
+              echo "删除 .git 目录避免子模块识别"
+              rm -rf "$final_target_path/.git"
+            fi
+            if [ -f "$final_target_path/.gitmodules" ]; then
+              echo "删除 .gitmodules 文件"
+              rm -f "$final_target_path/.gitmodules"
+            fi
+          else
+            if command -v rsync >/dev/null; then
+              echo "使用 rsync 复制文件到根目录（包含隐藏文件，排除 .git）"
+              rsync -av --exclude='.git' "$temp_dir/" ./
+            else
+              echo "使用 find + cp 复制文件到根目录（包含隐藏文件，排除 .git）"
+              find "$temp_dir" -mindepth 1 -maxdepth 1 -name ".git" -prune -o -exec cp -r {} . \;
+            fi
+          fi
+        fi
+        echo "修复可执行文件权限..."
+        echo "查找路径: $final_target_path"
+        find "$final_target_path" -type f \( -name "*.sh" -o -name "*.bash" -o -name "*.py" -o -name "*.pl" -o -name "*.rb" -o -name "*.php" -o -name "*.lua" \) -exec chmod +x {} \; 2>/dev/null || true
+        echo "已修复脚本文件权限"
+        find "$final_target_path" -type d -name "bin" | while read bin_dir; do
+          echo "修复 bin 目录: $bin_dir"
+          find "$bin_dir" -type f -exec chmod +x {} \; 2>/dev/null || true
+        done
+        find "$final_target_path" -type d \( -path "*/usr/bin" -o -path "*/usr/local/bin" -o -path "*/usr/sbin" -o -path "*/sbin" -o -path "*/opt/bin" \) | while read bin_dir; do
+          echo "修复系统 bin 目录: $bin_dir"
+          find "$bin_dir" -type f -exec chmod +x {} \; 2>/dev/null || true
+        done
+        find "$final_target_path" -type f ! -name "*.*" -exec sh -c '
+          file="$1"
+          if [ -s "$file" ] && head -n 1 "$file" | grep -q "^#!"; then
+            echo "修复脚本权限: $file"
+            chmod +x "$file"
+          fi
+        ' _ {} \; 2>/dev/null || true
+        echo "权限修复完成"
+        echo "=== 文件处理完成 ==="
+        echo "=== 拉取的文件列表 ==="
+        cd "$temp_dir"
+        file_count=$(find . -type f | wc -l)
+        dir_structure=$(find . -type d | sort)
+        echo "拉取的文件数量: $file_count"
+        echo "目录结构:"
+        echo "$dir_structure"
+        cd - > /dev/null
+        echo "===================="
+        rm -rf "$temp_dir"
+    - name: 清理默认文件
+      if: ${{ github.event.inputs.clean_default_files == 'true' }}
+      working-directory: ./workspace
+      run: |
+        CURRENT_BRANCH="${{ github.event.inputs.target_branch }}"
+        echo "🧹 开始清理默认文件 (分支: $CURRENT_BRANCH)"
+        echo "=========================================="
+        if [ "$CURRENT_BRANCH" = "main" ] || [ "$CURRENT_BRANCH" = "master" ]; then
+          echo "🚫 安全保护：跳过清理main/master分支"
+          exit 0
+        fi
+        TARGET_FOLDER="${{ github.event.inputs.target_folder }}"
+        SOURCE_PATH="${{ github.event.inputs.source_path }}"
+        SOURCE_REPO="${{ github.event.inputs.source_repo }}"
+        echo "目标文件夹: $TARGET_FOLDER"
+        echo "源路径: $SOURCE_PATH"
+        repo_name=$(basename "$SOURCE_REPO")
+        if [ -n "$TARGET_FOLDER" ]; then
+          base_target_path="$TARGET_FOLDER"
+        else
+          base_target_path="$repo_name"
+        fi
+        if [ -n "$SOURCE_PATH" ]; then
+          folder_name=$(basename "$SOURCE_PATH")
+          if [ -n "$base_target_path" ]; then
+            CLEAN_DIR="$base_target_path/$folder_name"
+          else
+            CLEAN_DIR="$folder_name"
+          fi
+        else
+          CLEAN_DIR="$base_target_path"
+        fi
+        echo "🎯 清理目录: $CLEAN_DIR"
+        echo "检查目录是否存在: $CLEAN_DIR"
+        if [ ! -e "$CLEAN_DIR" ]; then
+          echo "⚠️ 目标路径 '$CLEAN_DIR' 不存在，跳过清理"
+          exit 0
+        fi
+        CLEAN_ITEMS=(
+          ".gitignore" 
+          "LICENSE"
+          "CONTRIBUTING.md"
+          "CHANGELOG.md"
+          "CODE_OF_CONDUCT.md"
+          "docs"
+          "examples"
+          "test"
+          "tests"
+          ".github"
+        )
+        echo "📋 在 $CLEAN_DIR 内计划清理的项目:"
+        for item in "${CLEAN_ITEMS[@]}"; do
+          item_path="$CLEAN_DIR/$item"
+          if [ -e "$item_path" ]; then
+            echo "   ✅ $item (存在)"
+          else
+            echo "   ❌ $item (不存在)"
+          fi
+        done
+        echo ""
+        echo "🔧 开始清理过程..."
+        echo "------------------------------------------"
+        cd "$CLEAN_DIR"
+        echo "当前清理目录: $(pwd)"
+        for file in ".gitignore" "LICENSE" "CONTRIBUTING.md" "CHANGELOG.md" "CODE_OF_CONDUCT.md"; do
+          if [ -f "$file" ]; then
+            echo "🗑️  删除文件: $file"
+            rm -f "$file"
+            if [ ! -f "$file" ]; then
+              echo "   ✅ 删除成功"
+            else
+              echo "   ❌ 删除失败"
+            fi
+          fi
+        done
+        for dir in "docs" "examples" "test" "tests"; do
+          if [ -d "$dir" ]; then
+            echo "🗑️  删除目录: $dir/"
+            rm -rf "$dir"
+            if [ ! -d "$dir" ]; then
+              echo "   ✅ 删除成功"
+            else
+              echo "   ❌ 删除失败"
+            fi
+          fi
+        done
+        if [ -d ".github" ]; then
+          echo "🗑️  删除整个 .github/ 目录及其所有内容"
+          rm -rf ".github"
+          if [ ! -d ".github" ]; then
+            echo "   ✅ .github/ 目录删除成功"
+          else
+            echo "   ❌ .github/ 目录删除失败"
+          fi
+        else
+          echo "📭 .github/ 目录不存在，无需清理"
+        fi
+        echo "------------------------------------------"
+        echo "📊 清理完成统计:"
+        REMAINING_COUNT=0
+        for item in "${CLEAN_ITEMS[@]}"; do
+          if [ -e "$item" ]; then
+            echo "   📍 仍然存在: $item"
+            REMAINING_COUNT=$((REMAINING_COUNT + 1))
+          fi
+        done
+        echo ""
+        if [ $REMAINING_COUNT -eq 0 ]; then
+          echo "✅ 所有目标文件已清理完成！"
+        else
+          echo "⚠️  还有 $REMAINING_COUNT 个项目未被清理"
+        fi
+        echo "=== 清理后的文件状态 ==="
+        file_count=$(find . -type f | wc -l)
+        dir_structure=$(find . -type d | sort)
+        echo "剩余文件数量: $file_count"
+        echo "目录结构:"
+        echo "$dir_structure"
+        echo "===================="
+        cd ..
+    - name: 提交到目标分支
+      working-directory: ./workspace
+      run: |
+        TARGET_BRANCH="${{ github.event.inputs.target_branch }}"
+        SOURCE_REPO="${{ github.event.inputs.source_repo }}"
+        SOURCE_PATH="${{ github.event.inputs.source_path }}"
+        git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+        if ! git ls-remote --heads origin "$TARGET_BRANCH" | grep -q "$TARGET_BRANCH"; then
+          echo "首次推送分支 $TARGET_BRANCH 到远程（包含同步的文件）"
+          git add .
+          if [ -n "$(git status --porcelain)" ]; then
+            COMMIT_MSG="添加仓库: $SOURCE_REPO"
+            if [ -n "$SOURCE_PATH" ]; then
+              COMMIT_MSG="$COMMIT_MSG (路径: $SOURCE_PATH)"
+            fi
+            git commit -m "$COMMIT_MSG"
+          else
+            git commit --allow-empty -m "初始化分支 $TARGET_BRANCH"
+          fi
+          git push origin "HEAD:$TARGET_BRANCH" --force
+          echo "分支创建并推送完成"
+        else
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "没有更改需要提交"
+            exit 0
+          fi
+          git add .
+          COMMIT_MSG="添加仓库: $SOURCE_REPO"
+          if [ -n "$SOURCE_PATH" ]; then
+            COMMIT_MSG="$COMMIT_MSG (路径: $SOURCE_PATH)"
+          fi
+          git commit -m "$COMMIT_MSG"
+          echo "推送到分支: $TARGET_BRANCH"
+          git push origin "HEAD:$TARGET_BRANCH" --force
+          echo "✅ 同步完成！文件已保存到 $TARGET_BRANCH 分支"
+        fi
