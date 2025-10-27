@@ -1,0 +1,220 @@
+name: Fork-repos
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: '源仓库 URL (例如: https://github.com/username/repo.git)'
+        required: true
+        type: string
+      target_repo_name:
+        description: '目标仓库名称 (留空则使用源仓库名称)'
+        required: false
+        type: string
+      pat_token:
+        description: 'GitHub Personal Access Token (需要有 repo 权限)'
+        required: true
+        type: string
+      source_branch:
+        description: '要抓取的分支 (留空则自动检测默认分支)'
+        required: false
+        type: string
+      target_repo_visibility:
+        description: '目标仓库可见性'
+        required: false
+        default: 'public'
+        type: choice
+        options:
+          - public
+          - private
+
+jobs:
+  fork-repository:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract repo info from URL
+        id: repo_info
+        run: |
+          SOURCE_REPO="${{ github.event.inputs.source_repo }}"
+          # 从 URL 中提取 owner 和 repo name
+          if [[ $SOURCE_REPO =~ https://github.com/([^/]+)/([^/.]+)(\.git)?$ ]]; then
+            REPO_OWNER="${BASH_REMATCH[1]}"
+            REPO_NAME="${BASH_REMATCH[2]}"
+            echo "owner=$REPO_OWNER" >> $GITHUB_OUTPUT
+            echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
+            echo "提取信息: Owner=$REPO_OWNER, Repo=$REPO_NAME"
+          else
+            echo "错误: 无法从 URL 中提取仓库信息"
+            exit 1
+          fi
+
+      - name: Set target repository name
+        id: set_target_name
+        run: |
+          if [ -n "${{ github.event.inputs.target_repo_name }}" ]; then
+            TARGET_NAME="${{ github.event.inputs.target_repo_name }}"
+          else
+            TARGET_NAME="${{ steps.repo_info.outputs.repo_name }}"
+          fi
+          echo "目标仓库名称: $TARGET_NAME"
+          echo "target_name=$TARGET_NAME" >> $GITHUB_OUTPUT
+
+      - name: Validate inputs
+        run: |
+          echo "源仓库: ${{ github.event.inputs.source_repo }}"
+          echo "目标仓库名: ${{ steps.set_target_name.outputs.target_name }}"
+          echo "指定分支: ${{ github.event.inputs.source_branch || '未指定，将自动检测' }}"
+          echo "可见性: ${{ github.event.inputs.target_repo_visibility }}"
+
+      - name: Get default branch from source repo
+        id: get_branch
+        if: github.event.inputs.source_branch == ''
+        run: |
+          echo "正在检测源仓库的默认分支..."
+          
+          # 使用 GitHub API 获取仓库信息
+          RESPONSE=$(curl -s -H "Authorization: token ${{ github.event.inputs.pat_token }}" \
+            "https://api.github.com/repos/${{ steps.repo_info.outputs.owner }}/${{ steps.repo_info.outputs.repo_name }}")
+          
+          # 提取默认分支
+          DEFAULT_BRANCH=$(echo "$RESPONSE" | grep -o '"default_branch":"[^"]*' | cut -d'"' -f4)
+          
+          if [ -n "$DEFAULT_BRANCH" ]; then
+            echo "✅ 检测到默认分支: $DEFAULT_BRANCH"
+            echo "branch=$DEFAULT_BRANCH" >> $GITHUB_OUTPUT
+          else
+            echo "❌ 无法通过 API 获取默认分支，尝试常见分支..."
+            # 尝试常见的分支名
+            echo "branch=master" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set branch variable
+        id: set_branch
+        run: |
+          if [ -n "${{ github.event.inputs.source_branch }}" ]; then
+            BRANCH="${{ github.event.inputs.source_branch }}"
+            echo "使用用户指定的分支: $BRANCH"
+          else
+            BRANCH="${{ steps.get_branch.outputs.branch }}"
+            echo "使用自动检测的分支: $BRANCH"
+          fi
+          echo "最终使用分支: $BRANCH"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Test branch existence
+        id: test_branch
+        run: |
+          echo "测试分支 ${{ steps.set_branch.outputs.branch }} 是否存在..."
+          
+          # 使用 git ls-remote 检查分支是否存在
+          if git ls-remote --exit-code --heads ${{ github.event.inputs.source_repo }} ${{ steps.set_branch.outputs.branch }}; then
+            echo "✅ 分支 ${{ steps.set_branch.outputs.branch }} 存在"
+            echo "branch_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ 分支 ${{ steps.set_branch.outputs.branch }} 不存在"
+            echo "branch_exists=false" >> $GITHUB_OUTPUT
+            
+            # 列出所有可用的分支
+            echo "可用的分支:"
+            git ls-remote --heads ${{ github.event.inputs.source_repo }} | cut -f2 | sed 's|refs/heads/||'
+          fi
+
+      - name: Find available branch
+        id: find_branch
+        if: steps.test_branch.outputs.branch_exists == 'false'
+        run: |
+          echo "正在查找可用的分支..."
+          
+          # 获取所有分支并选择第一个
+          AVAILABLE_BRANCH=$(git ls-remote --heads ${{ github.event.inputs.source_repo }} | head -1 | cut -f2 | sed 's|refs/heads/||')
+          
+          if [ -n "$AVAILABLE_BRANCH" ]; then
+            echo "✅ 找到可用分支: $AVAILABLE_BRANCH"
+            echo "branch=$AVAILABLE_BRANCH" >> $GITHUB_OUTPUT
+          else
+            echo "❌ 没有找到任何分支"
+            exit 1
+          fi
+
+      - name: Clone source repository (shallow)
+        run: |
+          echo "正在克隆分支: ${{ steps.set_branch.outputs.branch }}"
+          git clone --depth 1 --branch ${{ steps.set_branch.outputs.branch }} \
+            ${{ github.event.inputs.source_repo }} source-repo
+          echo "✅ 源仓库克隆完成"
+
+      - name: Create new repository
+        id: create_repo
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.event.inputs.pat_token }}
+          script: |
+            const repoName = '${{ steps.set_target_name.outputs.target_name }}';
+            const isPrivate = '${{ github.event.inputs.target_repo_visibility }}' === 'private';
+            
+            try {
+              const response = await github.rest.repos.createForAuthenticatedUser({
+                name: repoName,
+                description: `从 ${{ github.event.inputs.source_repo }} 迁移的代码 (分支: ${{ steps.set_branch.outputs.branch }})`,
+                private: isPrivate,
+                auto_init: false
+              });
+              
+              console.log('✅ 仓库创建成功:', response.data.html_url);
+              return response.data.clone_url;
+              
+            } catch (error) {
+              if (error.status === 422) {
+                // 仓库已存在，获取现有仓库
+                console.log('📁 仓库已存在，使用现有仓库');
+                const existingRepo = await github.rest.repos.get({
+                  owner: context.repo.owner,
+                  repo: repoName
+                });
+                return existingRepo.data.clone_url;
+              }
+              console.error('❌ 创建仓库失败:', error);
+              throw error;
+            }
+
+      - name: Initialize and push to new repository
+        run: |
+          cd source-repo
+          
+          # 删除原有的 Git 历史
+          rm -rf .git
+          
+          # 初始化新的 Git 仓库
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 添加所有文件
+          git add .
+          
+          # 提交初始版本
+          git commit -m "初始提交: 从 ${{ github.event.inputs.source_repo }} (${{ steps.set_branch.outputs.branch }} 分支) 迁移"
+          
+          # 使用输入的 PAT 进行认证推送
+          git remote add origin https://oauth2:${{ github.event.inputs.pat_token }}@github.com/${{ github.repository_owner }}/${{ steps.set_target_name.outputs.target_name }}.git
+          git branch -M ${{ steps.set_branch.outputs.branch }}
+          git push -u origin ${{ steps.set_branch.outputs.branch }} --force
+          
+          echo "✅ 代码已成功推送到新仓库"
+
+      - name: Create summary
+        run: |
+          echo "## 🎉 仓库迁移完成" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 迁移详情" >> $GITHUB_STEP_SUMMARY
+          echo "- **源仓库**: ${{ github.event.inputs.source_repo }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **使用分支**: ${{ steps.set_branch.outputs.branch }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **目标仓库**: ${{ steps.set_target_name.outputs.target_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **可见性**: ${{ github.event.inputs.target_repo_visibility }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **提交历史**: 已清除" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 新仓库信息" >> $GITHUB_STEP_SUMMARY
+          echo "- 仓库地址: https://github.com/${{ github.repository_owner }}/${{ steps.set_target_name.outputs.target_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 分支: ${{ steps.set_branch.outputs.branch }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🚀 迁移成功完成！" >> $GITHUB_STEP_SUMMARY
