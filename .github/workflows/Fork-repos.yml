@@ -193,7 +193,7 @@ jobs:
           git add .
           
           # 提交初始版本
-          git commit -m "初始提交: 从 ${{ github.event.inputs.source_repo }} (${{ steps.set_branch.outputs.branch }} 分支) 迁移"
+          git commit -m "${{ github.event.inputs.source_repo }} (${{ steps.set_branch.outputs.branch }} 分支)"
           
           # 使用输入的 PAT 进行认证推送
           git remote add origin https://oauth2:${{ github.event.inputs.pat_token }}@github.com/${{ github.repository_owner }}/${{ steps.set_target_name.outputs.target_name }}.git
