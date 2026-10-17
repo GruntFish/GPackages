@@ -40,7 +40,7 @@ on:
         type: boolean
         default: false
       flat_copy:
-        description: '【新增】只保存源里面的文件到目标目录，不额外套一层源文件夹'
+        description: '只保存源目录中的文件及子目录到目标目录，不创建源目录'
         required: true
         type: boolean
         default: false
