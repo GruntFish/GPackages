@@ -4,25 +4,31 @@ PKG_NAME:=gecoosac
 PKG_VERSION:=2.2.20251015
 PKG_RELEASE:=1
 
-# 根据架构选择核心文件名
 ifeq ($(ARCH),aarch64)
   PKG_ARCH:=ac_linux_arm64
+  PKG_HASH:=66ef7f030954216fcf503bd4586cc3e87ba68f986f9718afc1fd16d6cd924ff0
 else ifeq ($(ARCH),arm)
   PKG_ARCH:=ac_linux_arm
+  PKG_HASH:=e0d60d19234df39bebb6625eb6e2393fead70d36dd5986dcda6c98b85d6eb175
 else ifeq ($(ARCH),mips)
   PKG_ARCH:=ac_linux_mips
+  PKG_HASH:=c5636e2277e3d2de3a91c7e3f4f9749dd4d9f35edf274ab7f0c2041131ea8da3
 else ifeq ($(ARCH),mipsel)
   PKG_ARCH:=ac_linux_mipsle
+  PKG_HASH:=ddd30214e07080d8329ab0226d596a7a648c5cff409209ec8256ee2761d60ccb
 else ifeq ($(ARCH),i386)
   PKG_ARCH:=ac_linux_386
+  PKG_HASH:=4d49092a1301c98a67b3ad33ea5a34a9207d7737ba0209dd420216ef3057998a
 else ifeq ($(ARCH),x86_64)
   PKG_ARCH:=ac_linux_amd64
+  PKG_HASH:=2fa24bce8cf2cb6923f8f01197eb68ca07507d61f1ecaefd0d1e82c7fde16086
 else
-  PKG_ARCH:=unsupported
+  PKG_HASH:=dummy
 endif
 
-# 绝对路径指向 gecoosac-core 目录
-PKG_CORE_DIR:=$(TOPDIR)/feeds/GPackages/openwrt-gecoosac/gecoosac-core
+PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)-$(ARCH_PACKAGES)
+PKG_SOURCE_URL:=https://github.com/GruntFish/GPackages/releases/download/$(PKG_NAME)-$(PKG_VERSION)/$(PKG_ARCH)?
+UNPACK_CMD=$(CP) $(DL_DIR)/$(PKG_SOURCE) $(PKG_BUILD_DIR)/$(PKG_NAME)
 
 PKG_LICENSE:=AGPL-3.0-only
 PKG_LICENSE_FILES:=LICENSE
@@ -36,13 +42,6 @@ define Package/$(PKG_NAME)
   TITLE:=gecoosac server (version $(PKG_VERSION))
   URL:=http://www.cnrouter.com/
   DEPENDS:=@(aarch64||arm||i386||mips||mipsel||x86_64)
-endef
-
-# 跳过下载/解压，直接从 gecoosac-core 复制二进制
-define Build/Prepare
-	mkdir -p $(PKG_BUILD_DIR)
-	$(CP) $(PKG_CORE_DIR)/$(PKG_ARCH) $(PKG_BUILD_DIR)/$(PKG_NAME)
-	chmod +x $(PKG_BUILD_DIR)/$(PKG_NAME)
 endef
 
 define Build/Compile
