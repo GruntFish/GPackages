@@ -201,7 +201,6 @@ jobs:
             cp "$copy_src" "$dst_root"
           fi
 
-          # 简化权限处理，去掉容易报错的多行内嵌sh
           find "$dst_root" -type f \( -name "*.sh" -o -name "*.bash" -o -name "*.py" -o -name "*.pl" -o -name "*.rb" -o -name "*.php" -o -name "*.lua" \) -exec chmod +x {} \; 2>/dev/null || true
           echo "权限处理完成"
           echo "=== 文件处理完成 ==="
@@ -286,3 +285,4 @@ jobs:
             echo "推送到分支: $TARGET_BRANCH"
             git push origin "HEAD:$TARGET_BRANCH" --force
             echo "✅ 同步完成！文件已保存到 $TARGET_BRANCH 分支"
+          fi
