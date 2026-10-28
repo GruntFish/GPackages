@@ -23,6 +23,10 @@ on:
         - auto
         - file
         - directory
+      target_branch:
+        description: '保存到的目标分支（不可为空）'
+        required: true
+        type: string
       target_folder:
         description: '保存到的目标目录'
         required: true
@@ -33,7 +37,7 @@ on:
         default: false
         type: boolean
       flat_copy:
-        description: '是否平铺：勾选则直接把源内文件放到目标根目录，不嵌套源文件夹'
+        description: '是否平铺：勾选则直接把源内文件放到目标路径，不嵌套源仓库名字文件夹'
         required: false
         default: false
         type: boolean
@@ -42,10 +46,11 @@ on:
         required: false
         default: false
         type: boolean
-      target_branch:
-        description: '提交到的目标分支'
-        required: true
-        type: string
+      clean_git_meta:
+        description: '清理git元文件：勾选后自动删除复制出来内容里的 .git 和 .gitmodules'
+        required: false
+        default: true
+        type: boolean
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -55,6 +60,7 @@ jobs:
         with:
           ref: ${{ inputs.target_branch }}
           fetch-depth: 0
+
       - name: Fetch and copy files
         env:
           SOURCE_REPO: ${{ inputs.source_repo }}
@@ -65,6 +71,7 @@ jobs:
           SAVE_TO_ROOT: ${{ inputs.save_to_root }}
           FLAT_COPY: ${{ inputs.flat_copy }}
           CONFIRM_REPLACE: ${{ inputs.confirm_replace }}
+          CLEAN_GIT_META: ${{ inputs.clean_git_meta }}
         run: |
           set -e
           echo "=== 信息简要 ==="
@@ -72,29 +79,27 @@ jobs:
           echo "源分支: ${SOURCE_BRANCH:-未指定，使用默认分支}"
           echo "源路径: ${SOURCE_PATH:-整个仓库}"
           echo "同步类型: $SOURCE_TYPE"
+          echo "目标分支: ${{ inputs.target_branch }}"
           echo "保存至根目录: $SAVE_TO_ROOT"
           echo "平铺复制: $FLAT_COPY"
           echo "整目录替换: $CONFIRM_REPLACE"
+          echo "清理Git元文件: $CLEAN_GIT_META"
 
           repo_name=$(basename "$SOURCE_REPO")
-          # 计算最终dst_root，还原原来两套开关组合逻辑
+          # 计算最终dst_root
           if [ "$SAVE_TO_ROOT" = "true" ]; then
             if [ "$FLAT_COPY" = "true" ]; then
-              # 保存到根 + 平铺：直接放到仓库根目录
               dst_root="."
               echo "路径规则：保存到分支根目录 + 平铺，文件直接放在仓库根"
             else
-              # 保存到根 + 不平铺：在仓库根创建源仓库名字文件夹
               dst_root="./$repo_name"
               echo "路径规则：保存到分支根目录，新建源文件夹 $repo_name"
             fi
           else
             if [ "$FLAT_COPY" = "true" ]; then
-              # 指定target_folder + 平铺：文件直接放到 target_folder 里面，不再套一层源文件夹
               dst_root="./$TARGET_FOLDER"
               echo "路径规则：保存到 $TARGET_FOLDER，平铺，源内文件直接放入此目录"
             else
-              # 指定target_folder + 不平铺：target_folder下面再套一层源仓库名字文件夹
               dst_root="./$TARGET_FOLDER/$repo_name"
               echo "路径规则：保存到 $TARGET_FOLDER/$repo_name"
             fi
@@ -131,7 +136,7 @@ jobs:
           fi
           echo "识别同步类型: $real_type"
 
-          # 【核心逻辑 按你要求修改】
+          # 目录逻辑：按你要求
           if [ "$CONFIRM_REPLACE" = "true" ]; then
             if [ -e "$dst_root" ]; then
               echo "【替换模式】删除目标目录 $dst_root"
@@ -151,12 +156,15 @@ jobs:
           echo "开始复制文件..."
           if [ "$real_type" = "directory" ]; then
             if command -v rsync >/dev/null; then
-              # 不带 --delete，只复制，不删除目标里原有其它文件
               rsync -av "$source_item/" "$dst_root/"
             else
               find "$source_item" -mindepth 1 -exec cp -r {} "$dst_root/" \;
             fi
-            rm -rf "$dst_root/.git" "$dst_root/.gitmodules" 2>/dev/null || true
+            # 清理git元文件，受选项控制
+            if [ "$CLEAN_GIT_META" = "true" ]; then
+              rm -rf "$dst_root/.git" "$dst_root/.gitmodules" 2>/dev/null || true
+              echo "已清理目标内 .git / .gitmodules"
+            fi
           else
             mkdir -p "$(dirname "$dst_root")"
             cp "$source_item" "$dst_root"
@@ -166,6 +174,7 @@ jobs:
           find "$dst_root" -type f \( -name "*.sh" -o -name "*.bash" -o -name "*.py" -o -name "*.pl" -o -name "*.rb" -o -name "*.php" -o -name "*.lua" \) -exec chmod +x {} \; 2>/dev/null || true
           echo "=== 文件处理完成 ==="
           rm -rf "$temp_dir"
+
       - name: Commit & Push
         run: |
           git config --global user.name "GitHub Action"
