@@ -1,6 +1,5 @@
 # This is free software, licensed under the Apache License, Version 2.0 .
 #
-
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-adguardhome
@@ -11,7 +10,6 @@ LUCI_TITLE:=LuCI app for AdGuardHome
 LUCI_PKGARCH:=all
 LUCI_DEPENDS:=+adguardhome +ca-certs
 LUCI_DESCRIPTION:=LuCI support for AdGuardHome
-
 
 define Package/$(PKG_NAME)/conffiles
 /etc/config/AdGuardHome
@@ -25,13 +23,12 @@ define Package/$(PKG_NAME)/preinst
 		add ucitrack AdGuardHome
 		set ucitrack.@AdGuardHome[-1].init=AdGuardHome
 		commit ucitrack
-	EOF
+EOF
 	rm -f /tmp/luci-indexcache
 exit 0
 endef
 
 define Package/$(PKG_NAME)/postinst
-
 #!/bin/sh
 	chmod +x /usr/share/AdGuardHome/*
 	chmod +x /etc/init.d/AdGuardHome
@@ -58,11 +55,4 @@ fi
 exit 0
 endef
 
-define Package/$(PKG_NAME)/postrm
-#!/bin/sh
-rm -rf /etc/AdGuardHome/
-exit 0
-endef
 include $(TOPDIR)/feeds/luci/luci.mk
-
-# call BuildPackage - OpenWrt buildroot signature
