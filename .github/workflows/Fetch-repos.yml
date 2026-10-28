@@ -27,6 +27,11 @@ on:
         description: '保存到的目标目录'
         required: true
         type: string
+      save_to_root:
+        description: '保存到根目录：勾选则直接存到目标分支根目录，target_folder作为顶层文件夹名；不勾选则放在target_folder目录内'
+        required: false
+        default: false
+        type: boolean
       flat_copy:
         description: '是否平铺：勾选则直接把源内文件放到目标根目录，不嵌套源文件夹'
         required: false
@@ -57,6 +62,7 @@ jobs:
           SOURCE_PATH: ${{ inputs.source_path }}
           SOURCE_TYPE: ${{ inputs.source_type }}
           TARGET_FOLDER: ${{ inputs.target_folder }}
+          SAVE_TO_ROOT: ${{ inputs.save_to_root }}
           FLAT_COPY: ${{ inputs.flat_copy }}
           CONFIRM_REPLACE: ${{ inputs.confirm_replace }}
         run: |
@@ -66,18 +72,34 @@ jobs:
           echo "源分支: ${SOURCE_BRANCH:-未指定，使用默认分支}"
           echo "源路径: ${SOURCE_PATH:-整个仓库}"
           echo "同步类型: $SOURCE_TYPE"
+          echo "保存至根目录: $SAVE_TO_ROOT"
           echo "平铺复制: $FLAT_COPY"
           echo "整目录替换: $CONFIRM_REPLACE"
 
-          if [ "$FLAT_COPY" = "true" ]; then
-            base_target="$TARGET_FOLDER"
-            echo "保存基准目录: $base_target"
+          repo_name=$(basename "$SOURCE_REPO")
+          # 计算最终dst_root，还原原来两套开关组合逻辑
+          if [ "$SAVE_TO_ROOT" = "true" ]; then
+            if [ "$FLAT_COPY" = "true" ]; then
+              # 保存到根 + 平铺：直接放到仓库根目录
+              dst_root="."
+              echo "路径规则：保存到分支根目录 + 平铺，文件直接放在仓库根"
+            else
+              # 保存到根 + 不平铺：在仓库根创建源仓库名字文件夹
+              dst_root="./$repo_name"
+              echo "路径规则：保存到分支根目录，新建源文件夹 $repo_name"
+            fi
           else
-            repo_name=$(basename "$SOURCE_REPO")
-            base_target="$TARGET_FOLDER/$repo_name"
-            echo "保存基准目录: $base_target"
+            if [ "$FLAT_COPY" = "true" ]; then
+              # 指定target_folder + 平铺：文件直接放到 target_folder 里面，不再套一层源文件夹
+              dst_root="./$TARGET_FOLDER"
+              echo "路径规则：保存到 $TARGET_FOLDER，平铺，源内文件直接放入此目录"
+            else
+              # 指定target_folder + 不平铺：target_folder下面再套一层源仓库名字文件夹
+              dst_root="./$TARGET_FOLDER/$repo_name"
+              echo "路径规则：保存到 $TARGET_FOLDER/$repo_name"
+            fi
           fi
-          dst_root="$base_target"
+          echo "最终目标路径：$dst_root"
 
           temp_dir=$(mktemp -d)
           echo "临时目录: $temp_dir"
@@ -109,7 +131,7 @@ jobs:
           fi
           echo "识别同步类型: $real_type"
 
-          # ========== 这里是修改后的目录逻辑 ==========
+          # 【核心逻辑 按你要求修改】
           if [ "$CONFIRM_REPLACE" = "true" ]; then
             if [ -e "$dst_root" ]; then
               echo "【替换模式】删除目标目录 $dst_root"
@@ -125,12 +147,11 @@ jobs:
               mkdir -p "$dst_root"
             fi
           fi
-          # ===========================================
 
           echo "开始复制文件..."
           if [ "$real_type" = "directory" ]; then
             if command -v rsync >/dev/null; then
-              # 移除 --delete，不再自动删掉目标里多余文件
+              # 不带 --delete，只复制，不删除目标里原有其它文件
               rsync -av "$source_item/" "$dst_root/"
             else
               find "$source_item" -mindepth 1 -exec cp -r {} "$dst_root/" \;
@@ -150,5 +171,5 @@ jobs:
           git config --global user.name "GitHub Action"
           git config --global user.email "action@github.com"
           git add .
-          git commit -m "Sync ${{ inputs.source_repo }} to ${{ inputs.target_folder }}" || echo "无变更，跳过提交"
+          git commit -m "Sync ${{ inputs.source_repo }}" || echo "无变更，跳过提交"
           git push
