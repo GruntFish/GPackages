@@ -65,8 +65,14 @@ jobs:
 
       - name: 拉取源仓库代码
         run: |
-          git clone --depth 1 --branch ${{ inputs.source_branch || '' }} https://github.com/${{ inputs.source_repo }}.git source
-        continue-on-error: false
+          set -e
+          if [[ -z "${{ inputs.source_branch }}" ]]; then
+            # 分支为空，不指定 --branch，使用默认分支
+            git clone --depth 1 https://github.com/${{ inputs.source_repo }}.git source
+          else
+            # 有指定分支，带上 --branch 参数
+            git clone --depth 1 --branch "${{ inputs.source_branch }}" https://github.com/${{ inputs.source_repo }}.git source
+          fi
 
       - name: 准备基准目标路径
         id: path_prep
