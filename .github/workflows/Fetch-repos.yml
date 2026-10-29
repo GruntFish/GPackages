@@ -1,3 +1,4 @@
+# The Workflow By GruntFish & DS & DB.
 name: Fetch-repos
 on:
   workflow_dispatch:
@@ -11,7 +12,7 @@ on:
         required: false
         type: string
       source_path:
-        description: '源指定路径（目录或文件，可为空）'
+        description: '源指定路径（目录或文件，可为空，为空=整个仓库）'
         required: false
         type: string
       source_type:
@@ -34,151 +35,96 @@ on:
       save_to_root:
         description: '保存到根目录：勾选则直接存到目标分支根目录，target_folder作为顶层文件夹名；不勾选则放在target_folder目录内'
         required: false
-        default: false
         type: boolean
+        default: false
       flat_copy:
         description: '是否平铺：勾选则直接把源内文件放到目标路径，不嵌套源仓库名字文件夹'
         required: false
-        default: false
         type: boolean
+        default: false
       confirm_replace:
         description: '是否替换整个目标目录：勾选则先删除整个目标目录再写入；不勾选则复用已有目录，直接放入文件'
         required: false
+        type: boolean
         default: false
-        type: boolean
       clean_git_meta:
-        description: '清理git元文件：勾选后自动删除复制出来内容里的 .git 和 .gitmodules'
+        description: '清理git元文件：勾选后自动删除复制出来内容里的.git和.gitmodules'
         required: false
-        default: true
         type: boolean
+        default: true
+
 jobs:
-  sync:
+  fetch-and-sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout target repo
+      - name: Checkout 当前目标仓库
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.target_branch }}
           fetch-depth: 0
 
-      - name: Fetch and copy files
-        env:
-          SOURCE_REPO: ${{ inputs.source_repo }}
-          SOURCE_BRANCH: ${{ inputs.source_branch }}
-          SOURCE_PATH: ${{ inputs.source_path }}
-          SOURCE_TYPE: ${{ inputs.source_type }}
-          TARGET_FOLDER: ${{ inputs.target_folder }}
-          SAVE_TO_ROOT: ${{ inputs.save_to_root }}
-          FLAT_COPY: ${{ inputs.flat_copy }}
-          CONFIRM_REPLACE: ${{ inputs.confirm_replace }}
-          CLEAN_GIT_META: ${{ inputs.clean_git_meta }}
+      - name: 拉取源仓库代码
+        run: |
+          git clone --depth 1 --branch ${{ inputs.source_branch || '' }} https://github.com/${{ inputs.source_repo }}.git source
+        continue-on-error: false
+
+      - name: 准备基准目标路径
+        id: path_prep
+        run: |
+          if [[ "${{ inputs.save_to_root }}" == "true" ]]; then
+            BASE_TARGET="./${{ inputs.target_folder }}"
+          else
+            BASE_TARGET="./${{ inputs.target_folder }}"
+          fi
+          echo "BASE_TARGET=${BASE_TARGET}" >> $GITHUB_OUTPUT
+          mkdir -p "${BASE_TARGET}"
+
+      - name: 替换目标目录（仅勾选confirm_replace时执行）
+        run: |
+          BASE_TARGET="${{ steps.path_prep.outputs.BASE_TARGET }}"
+          if [[ "${{ inputs.confirm_replace }}" == "true" ]]; then
+            rm -rf "${BASE_TARGET}"
+            mkdir -p "${BASE_TARGET}"
+          fi
+
+      - name: 执行文件复制（核心逻辑）
         run: |
           set -e
-          echo "=== 信息简要 ==="
-          echo "源仓库: $SOURCE_REPO"
-          echo "源分支: ${SOURCE_BRANCH:-未指定，使用默认分支}"
-          echo "源路径: ${SOURCE_PATH:-整个仓库}"
-          echo "同步类型: $SOURCE_TYPE"
-          echo "目标分支: ${{ inputs.target_branch }}"
-          echo "保存至根目录: $SAVE_TO_ROOT"
-          echo "平铺复制: $FLAT_COPY"
-          echo "整目录替换: $CONFIRM_REPLACE"
-          echo "清理Git元文件: $CLEAN_GIT_META"
-
-          repo_name=$(basename "$SOURCE_REPO")
-          # 计算最终dst_root
-          if [ "$SAVE_TO_ROOT" = "true" ]; then
-            if [ "$FLAT_COPY" = "true" ]; then
-              dst_root="."
-              echo "路径规则：保存到分支根目录 + 平铺，文件直接放在仓库根"
-            else
-              dst_root="./$repo_name"
-              echo "路径规则：保存到分支根目录，新建源文件夹 $repo_name"
-            fi
+          BASE_TARGET="${{ steps.path_prep.outputs.BASE_TARGET }}"
+          SRC_ROOT="./source"
+          # 拼接源路径，如果source_path为空则使用整个源仓库根目录
+          if [[ -z "${{ inputs.source_path }}" ]]; then
+            SRC_ABS="${SRC_ROOT}"
           else
-            if [ "$FLAT_COPY" = "true" ]; then
-              dst_root="./$TARGET_FOLDER"
-              echo "路径规则：保存到 $TARGET_FOLDER，平铺，源内文件直接放入此目录"
-            else
-              dst_root="./$TARGET_FOLDER/$repo_name"
-              echo "路径规则：保存到 $TARGET_FOLDER/$repo_name"
-            fi
-          fi
-          echo "最终目标路径：$dst_root"
-
-          temp_dir=$(mktemp -d)
-          echo "临时目录: $temp_dir"
-          echo "开始拉取源仓库..."
-          if [ -n "$SOURCE_BRANCH" ]; then
-            git clone --depth 1 --branch "$SOURCE_BRANCH" "https://github.com/$SOURCE_REPO.git" "$temp_dir"
-          else
-            git clone --depth 1 "https://github.com/$SOURCE_REPO.git" "$temp_dir"
+            SRC_ABS="${SRC_ROOT}/${{ inputs.source_path }}"
           fi
 
-          if [ -n "$SOURCE_PATH" ]; then
-            source_item="$temp_dir/$SOURCE_PATH"
-            if [ ! -e "$source_item" ]; then
-              echo "错误: 路径 '$SOURCE_PATH' 在源仓库中不存在"
-              exit 1
-            fi
+          if [[ "${{ inputs.flat_copy }}" == "true" ]]; then
+            # 平铺模式：只复制源路径里面所有内容，不带外层文件夹
+            cp -r "${SRC_ABS}/"* "${BASE_TARGET}/"
           else
-            source_item="$temp_dir"
+            # 不平铺：把 source_path 本身这个目录完整复制进去
+            SRC_DIR_NAME=$(basename "${SRC_ABS}")
+            cp -r "${SRC_ABS}" "${BASE_TARGET}/${SRC_DIR_NAME}"
           fi
 
-          if [ "$SOURCE_TYPE" = "auto" ]; then
-            if [ -d "$source_item" ]; then
-              real_type="directory"
-            else
-              real_type="file"
-            fi
-          else
-            real_type="$SOURCE_TYPE"
-          fi
-          echo "识别同步类型: $real_type"
-
-          # 目录逻辑：按你要求
-          if [ "$CONFIRM_REPLACE" = "true" ]; then
-            if [ -e "$dst_root" ]; then
-              echo "【替换模式】删除目标目录 $dst_root"
-              rm -rf "$dst_root"
-            fi
-            mkdir -p "$dst_root"
-            echo "【替换模式】重建目录完成"
-          else
-            if [ -e "$dst_root" ]; then
-              echo "【普通写入模式】目录 $dst_root 已存在，直接复用目录"
-            else
-              echo "【普通写入模式】目录 $dst_root 不存在，新建目录"
-              mkdir -p "$dst_root"
-            fi
-          fi
-
-          echo "开始复制文件..."
-          if [ "$real_type" = "directory" ]; then
-            if command -v rsync >/dev/null; then
-              rsync -av "$source_item/" "$dst_root/"
-            else
-              find "$source_item" -mindepth 1 -exec cp -r {} "$dst_root/" \;
-            fi
-            # 清理git元文件，受选项控制
-            if [ "$CLEAN_GIT_META" = "true" ]; then
-              rm -rf "$dst_root/.git" "$dst_root/.gitmodules" 2>/dev/null || true
-              echo "已清理目标内 .git / .gitmodules"
-            fi
-          else
-            mkdir -p "$(dirname "$dst_root")"
-            cp "$source_item" "$dst_root"
-          fi
-
-          echo "权限处理"
-          find "$dst_root" -type f \( -name "*.sh" -o -name "*.bash" -o -name "*.py" -o -name "*.pl" -o -name "*.rb" -o -name "*.php" -o -name "*.lua" \) -exec chmod +x {} \; 2>/dev/null || true
-          echo "=== 文件处理完成 ==="
-          rm -rf "$temp_dir"
-
-      - name: Commit & Push
+      - name: 清理Git元文件
         run: |
-          git config --global user.name "GitHub Action"
-          git config --global user.email "action@github.com"
+          BASE_TARGET="${{ steps.path_prep.outputs.BASE_TARGET }}"
+          if [[ "${{ inputs.clean_git_meta }}" == "true" ]]; then
+            find "${BASE_TARGET}" -name ".git" -type d -exec rm -rf {} +
+            find "${BASE_TARGET}" -name ".gitmodules" -delete
+          fi
+
+      - name: 提交推送变更
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
           git add .
-          git commit -m "Sync ${{ inputs.source_repo }}" || echo "无变更，跳过提交"
-          git push
+          # 判断是否有变更，无变更直接退出
+          if git diff --cached --quiet; then
+            echo "没有文件变更，跳过提交"
+            exit 0
+          fi
+          git commit -m "Sync from ${{ inputs.source_repo }}${{ inputs.source_path && ' / ' || '' }}${{ inputs.source_path }}"
+          git push origin ${{ inputs.target_branch }}
