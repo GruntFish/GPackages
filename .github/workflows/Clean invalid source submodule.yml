@@ -1,0 +1,34 @@
+name: Clean invalid source submodule
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+
+jobs:
+  clean:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Packages branch
+        uses: actions/checkout@v5
+        with:
+          ref: Packages
+          fetch-depth: 0
+
+      - name: Clean the bad source entry
+        run: |
+          set -e
+          # 只从git索引删除这条伪子模块记录，不会删除已经同步好的插件文件
+          git rm --cached source || true
+          # 删除本地残留的source文件夹（如果存在）
+          rm -rf ./source
+          
+          # 检查有没有变更
+          if [[ -z $(git status --porcelain) ]]; then
+            echo "✅ 没有需要清理的脏记录，无需提交"
+            exit 0
+          fi
+          
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git commit -m "fix: remove invalid source submodule entry for feeds clone"
+          git push origin Packages
